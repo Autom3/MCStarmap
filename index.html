@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Night Sky</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body style="margin: 0; overflow: hidden;">
+    <script>
+        class LegacyRandomSource {
+            constructor(seed) {
+                this.MODULUS_MASK = 0xFFFFFFFFFFFFn;
+                this.MULTIPLIER = 25214903917n;
+                this.INCREMENT = 11n;
+                this.seed = (BigInt(seed) ^ 0x5DEECE66Dn) & this.MODULUS_MASK;
+            }
+
+            next(bits) {
+                this.seed = (this.seed * this.MULTIPLIER + this.INCREMENT) & this.MODULUS_MASK;
+                return Number(this.seed >> (48n - BigInt(bits)));
+            }
+
+            nextFloat() {
+                return this.next(24) * 5.9604645e-8;
+            }
+
+            nextDouble() {
+                let upperBits = this.next(26);
+                let lowerBits = this.next(27);
+                let combinedBits = (BigInt(upperBits) << 27n) + BigInt(lowerBits);
+                return Number(combinedBits) * 1.110223e-16;
+            }
+        }
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+        const starsGeometry = new THREE.BufferGeometry();
+        const starVertices = [];
+        const randomSource = new LegacyRandomSource(10842);
+
+        let starCount = 0;
+
+        for (let i = 0; i < 1500; i++) {
+            let xRandom = randomSource.nextFloat() * 2.0 - 1.0;
+            let yRandom = randomSource.nextFloat() * 2.0 - 1.0;
+            let zRandom = randomSource.nextFloat() * 2.0 - 1.0;
+            let starSize = 0.15 + randomSource.nextFloat() * 0.1;
+            let distanceSquared = xRandom * xRandom + yRandom * yRandom + zRandom * zRandom;
+            
+            if (distanceSquared >= 1.0 || distanceSquared < 0.01) {
+                continue;
+            }
+
+            starCount++;
+
+            let distanceNormalized = 1.0 / Math.sqrt(distanceSquared);
+            xRandom *= distanceNormalized;
+            yRandom *= distanceNormalized;
+            zRandom *= distanceNormalized;
+            let xPosition = xRandom * 100.0;
+            let yPosition = yRandom * 100.0;
+            let zPosition = zRandom * 100.0;
+            let azimuthalAngle = Math.atan2(xRandom, zRandom);
+            let sinAzimuthal = Math.sin(azimuthalAngle);
+            let cosAzimuthal = Math.cos(azimuthalAngle);
+            let polarAngle = Math.atan2(Math.sqrt(xRandom * xRandom + zRandom * zRandom), yRandom);
+            let sinPolar = Math.sin(polarAngle);
+            let cosPolar = Math.cos(polarAngle);
+            let rotationAngle = randomSource.nextDouble() * Math.PI * 2.0;
+            let sinRotation = Math.sin(rotationAngle);
+            let cosRotation = Math.cos(rotationAngle);
+
+            for (let corner = 0; corner < 4; corner++) {
+                let localX = ((corner & 2) - 1) * starSize;
+                let localY = ((corner + 1 & 2) - 1) * starSize;
+                let rotatedX = localX * cosRotation - localY * sinRotation;
+                let rotatedY = localY * cosRotation + localX * sinRotation;
+                let projectedX = rotatedX * sinPolar;
+                let projectedY = -rotatedX * cosPolar;
+                let finalX = projectedY * sinAzimuthal - rotatedY * cosAzimuthal;
+                let finalY = projectedX;
+                let finalZ = rotatedY * sinAzimuthal + projectedY * cosAzimuthal;
+
+                starVertices.push(xPosition + finalX, yPosition + finalY, zPosition + finalZ);
+            }
+        }
+
+        starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+        const starsMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.5 });
+        const stars = new THREE.Points(starsGeometry, starsMaterial);
+        scene.add(stars);
+
+        function createSquare(color, position) {
+            const geometry = new THREE.PlaneGeometry(2, 2);
+            const material = new THREE.MeshBasicMaterial({ color: color, side: THREE.DoubleSide });
+            const square = new THREE.Mesh(geometry, material);
+            square.position.set(...position);
+            square.rotation.set(position[1] !== 0 ? Math.PI/2 : 0, position[0] !== 0 ? Math.PI/2 : 0, 0);
+            scene.add(square);
+        }
+
+        createSquare(0xffff00, [0, 100, 0]);  // Sun
+        createSquare(0x0000ff, [0, -100, 0]); // Moon
+
+        camera.position.set(0, 1, 0);
+        controls.target.set(0, 0, 0);
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        
+        animate();
+    </script>
+</body>
+</html>
